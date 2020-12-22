@@ -8,6 +8,14 @@ How it works is it'll scan your network using nmap(1) to refresh the ARP cache,
 then send a ping to every IP address matching the MAC address you give it until
 it finds one that responds.
 
+Installation
+------------
+
+Log into your Nagios install and run this as root:
+
+    curl -Ls https://github.com/h3xx/check_arp_ping/raw/main/check_arp_ping > /usr/local/nagios/libexec/check_arp_ping
+    chmod +x /usr/local/nagios/libexec/check_arp_ping
+
 Usage
 -----
 
