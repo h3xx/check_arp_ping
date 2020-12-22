@@ -27,3 +27,13 @@ Options
     -c <crta>,<cpl>%         | These options get passed to check_ping.
     [-p packets]             |
     [-t timeout]            -+
+
+Example configuration in Nagios
+-------------------------------
+
+    $USER1$/check_arp_ping -n 192.168.23.0/24 -w $ARG1$,$ARG2$ -c $ARG3$,$ARG4$ -p 5 ab:cd:ef:ff:ff:ff
+
+    - ARG1=3000.0
+    - ARG2=80%
+    - ARG3=5000.0
+    - ARG4=100%
