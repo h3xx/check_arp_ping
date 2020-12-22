@@ -2,7 +2,7 @@
 # vi: et sts=4 sw=4 ts=4
 # This probably re-invents the wheel a bit. This was a hack. If you found it
 # useful, or if it's causing you issues, drop me a line.
-# https://github.com/h3xx/check_ping_arp
+# https://github.com/h3xx/check_arp_ping
 
 ME=$(basename -- "$0")
 
