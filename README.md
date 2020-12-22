@@ -4,6 +4,10 @@ Nagios `check_arp_ping` plugin
 This is basically the same thing as `check_ping`, except uses the ARP table to
 "ping-by-MAC-address."
 
+How it works is it'll scan your network using nmap(1) to refresh the ARP cache,
+then send a ping to every IP address matching the MAC address you give it until
+it finds one that responds.
+
 Usage
 -----
 
