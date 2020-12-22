@@ -1,0 +1,169 @@
+#!/bin/bash
+# vi: et sts=4 sw=4 ts=4
+# This probably re-invents the wheel a bit. This was a hack. If you found it
+# useful, or if it's causing you issues, drop me a line.
+# https://github.com/h3xx/check_ping_arp
+
+ME=$(basename -- "$0")
+
+HELP_MESSAGE() {
+    cat <<EOF
+Usage: $ME [OPTIONS] MAC_ADDR
+Same thing as check_ping, except uses the ARP table to "ping-by-MAC"
+Options:
+    --help                  Show this help message.
+    -n, --network NET       Use NET as the network IP range or netmask to scan to
+                              populate ARP table. Example forms accepted:
+                              - 192.168.0.0/24
+                              - 192.168.0.[100-200]
+                              - 192.168.*.*
+                            (Default: 192.168.0.0/24)
+    -d, --dont-scan         Don't scan the network at all, rely solely on the ARP
+                              cache.
+    -l, --lazy              Only scan the network if the MAC address isn't in the
+                              ARP cache. Could lead to discrepancies.
+    -w <wrta>,<wpl>%        -+
+    -c <crta>,<cpl>%         | These options get passed to check_ping.
+    [-p packets]             |
+    [-t timeout]            -+
+
+Copyright (C) 2020 Dan Church (h3xx@gmx.com, github.com/h3xx).
+License GPLv3+: GNU GPL version 3 or later (http://gnu.org/licenses/gpl.html).
+This is free software: you are free to change and redistribute it. There is NO
+WARRANTY, to the extent permitted by law.
+EOF
+}
+
+LAZY_SCAN=0
+DONT_SCAN=0
+NETWORK=192.168.0.0/24
+CHECK_PING_ARGS=()
+
+ARGS=("$@")
+ARG_ERRORS=0
+for (( ai = 0; ai < ${#ARGS[@]} ; ++ai )); do
+    case "${ARGS[$ai]}" in
+        --help)
+            HELP_MESSAGE
+            exit 0
+            ;;
+        --network|-n)
+            let ++ai
+            NETWORK=${ARGS[$ai]}
+            ;;
+        --dont-scan|-d)
+            DONT_SCAN=1
+            ;;
+        --lazy|-l)
+            LAZY_SCAN=1
+            ;;
+        -w|-c|-p|-t)
+            CHECK_PING_ARGS+=("${ARGS[$ai]}")
+            let ++ai
+            CHECK_PING_ARGS+=("${ARGS[$ai]}")
+            ;;
+        --|[^-]*)
+            break
+            ;;
+        *)
+            echo "Unrecognized option: ${ARGS[$ai]}" >&2
+            echo "Try '$ME --help' for more information." >&2
+            ARG_ERRORS=1
+            ;;
+    esac
+done
+
+if [[ $ARG_ERRORS -ne 0 ]]; then
+    exit 2
+fi
+
+shift $ai
+MAC=$1
+
+if [[ -z $MAC ]]; then
+    HELP_MESSAGE
+    exit 1
+fi
+
+check_requirements() {
+    local REQUIREMENTS_MISSING=0 PROG CHECK_PING_TEST
+    local REQUIRED_PROGS=(
+        arp
+        nmap
+    )
+    for PROG in "${REQUIRED_PROGS[@]}"; do
+        if ! hash "$PROG" &>/dev/null; then
+            echo "This plugin requires $PROG" >&2
+            REQUIREMENTS_MISSING=1
+        fi
+    done
+    local CHECK_PING_CANDIDATES=(
+        "$(dirname -- "$0")/check_ping"
+        /usr/local/nagios/libexec/check_ping
+    )
+    CHECK_PING=
+    for CHECK_PING_TEST in "${CHECK_PING_CANDIDATES[@]}"; do
+        if [[ -f $CHECK_PING_TEST && -x $CHECK_PING_TEST ]]; then
+            CHECK_PING=$CHECK_PING_TEST
+            break
+        fi
+    done
+    if [[ -z $CHECK_PING ]]; then
+        echo "This plugin requires check_ping" >&2
+        REQUIREMENTS_MISSING=1
+    fi
+    [[ $REQUIREMENTS_MISSING -eq 0 ]] || exit 2
+}
+
+# This could return >1 IP address - that's okay!
+mactoip() {
+    arp -n | grep -iF "$MAC" | cut -f 1 -d ' '
+}
+
+scan_network() {
+    nmap -sn -T4 "$NETWORK" >& /dev/null
+}
+
+ping_mac() {
+    if [[ $DONT_SCAN -ne 0 ]]; then
+        # Either we find it now or we don't
+        IPS=( $(mactoip "$MAC") )
+    else
+        if [[ $LAZY_SCAN -ne 0 ]]; then
+            # Attempt to use cache first
+            IPS=( $(mactoip "$MAC") )
+            if [[ ${#IPS[@]} -eq 0 ]]; then
+                # Try to populate the ARP table
+                scan_network
+                IPS=( $(mactoip "$MAC") )
+            fi
+        else
+            scan_network
+            IPS=( $(mactoip "$MAC") )
+        fi
+    fi
+    if [[ ${#IPS[@]} -eq 0 ]]; then
+        echo "Unable to resolve $MAC to IP address" >&2
+    fi
+    LAST_ERROR=
+    LAST_EXIT=0
+    LAST_SUCCESS=
+    for IP in "${IPS[@]}"; do
+        if L=$("$CHECK_PING" -H "$IP" "${CHECK_PING_ARGS[@]}"); then
+            LAST_SUCCESS=$L
+            break
+        else
+            LAST_EXIT
+            LAST_ERROR=$L
+        fi
+    done
+    if [[ -n $LAST_SUCCESS ]]; then
+        echo "$LAST_SUCCESS"
+    else
+        echo "$LAST_ERROR"
+        return "$LAST_EXIT"
+    fi
+}
+
+check_requirements
+ping_mac "$MAC"
