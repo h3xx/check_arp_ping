@@ -121,7 +121,7 @@ mactoip() {
 }
 
 scan_network() {
-    nmap -sn -T4 "$NETWORK" >& /dev/null
+    nmap -sn -T4 --send-ip "$NETWORK" >& /dev/null
 }
 
 ping_mac() {
